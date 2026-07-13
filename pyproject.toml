@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sherlock-proxyhat"
+version = "0.1.0"
+description = "Run the Sherlock OSINT username hunter through ProxyHat residential proxies — rotating IPs, geo-targeting, fewer blocks."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "ProxyHat", email = "support@proxyhat.com" }]
+keywords = [
+    "sherlock",
+    "osint",
+    "proxy",
+    "residential-proxy",
+    "proxyhat",
+    "username",
+    "reconnaissance",
+    "rotating-proxy",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: Proxy Servers",
+    "Topic :: Security",
+]
+dependencies = ["proxyhat>=0.2.0"]
+
+[project.scripts]
+sherlock-proxyhat = "sherlock_proxyhat.cli:main"
+
+[project.urls]
+Homepage = "https://proxyhat.com"
+Documentation = "https://docs.proxyhat.com"
+Repository = "https://github.com/ProxyHatCom/sherlock-proxyhat"
+
+[project.optional-dependencies]
+# Sherlock is the app this launcher shells out to. It's optional because we call
+# the `sherlock` executable via subprocess (never import it), so you can also use
+# a sherlock installed separately (pipx, system package, etc.).
+sherlock = ["sherlock-project>=0.14"]
+dev = ["pytest>=7.0", "ruff>=0.4"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sherlock_proxyhat"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
