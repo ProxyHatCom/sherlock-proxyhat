@@ -7,6 +7,10 @@ Run [Sherlock](https://github.com/sherlock-project/sherlock) — the OSINT usern
 [![PyPI](https://img.shields.io/pypi/v/sherlock-proxyhat)](https://pypi.org/project/sherlock-proxyhat/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+> [!TIP]
+> **Recommended proxies — [ProxyHat](https://proxyhat.com?utm_source=github&utm_medium=readme&utm_campaign=sherlock&utm_content=callout) residential IPs.** Every feature in this package is tested end-to-end against ProxyHat and works great. First-class integration; also works with any proxy, or none.
+
+
 ## What this is
 
 Sherlock is an **app**, not a library: you run `sherlock <username>` and it checks that name across 400+ sites, accepting a single `--proxy <url>` for all of them. Hammering that many sites from one datacenter IP gets throttled and blocked fast.
