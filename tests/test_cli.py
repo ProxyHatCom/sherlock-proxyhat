@@ -17,20 +17,25 @@ from sherlock_proxyhat import build_command, cli, main
 
 @pytest.fixture
 def fake_sherlock(monkeypatch):
-    """Pretend `sherlock` is installed at a fixed path and capture subprocess.run."""
-    captured = {}
+    """Pretend `sherlock` is installed and stub its subprocess.
 
-    def fake_run(command, *args, **kwargs):
-        captured["command"] = command
+    Returns a mutable ``state`` dict: tests set ``state["lines"]`` (the stdout the
+    fake sherlock emits) and ``state["returncode"]`` before calling ``main``, and
+    read back ``state["command"]`` (the exact argv the launcher ran).
+    """
+    state = {"lines": [], "returncode": 0}
 
-        class Completed:
-            returncode = 0
+    class FakePopen:
+        def __init__(self, command, *args, **kwargs):
+            state["command"] = command
+            self.stdout = iter(state["lines"])
 
-        return Completed()
+        def wait(self):
+            return state["returncode"]
 
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/sherlock" if name == "sherlock" else None)
-    monkeypatch.setattr(cli.subprocess, "run", fake_run)
-    return captured
+    monkeypatch.setattr(cli.subprocess, "Popen", FakePopen)
+    return state
 
 
 CREDS = ["--proxyhat-username", "ph-1", "--proxyhat-password", "pw"]
@@ -96,6 +101,25 @@ class TestMain:
         assert command[1] == "--proxy"
         assert command[2].startswith("http://ph-1-country-us:pw@")
         assert command[3] == "johndoe"
+
+    def test_main_redacts_proxy_credentials_but_keeps_result_lines(self, fake_sherlock, capsys):
+        # Simulate upstream sherlock echoing the full credentialed --proxy URL,
+        # then a normal result line. The launcher must mask our creds and pass
+        # the result line through untouched, preserving the child exit code.
+        fake_sherlock["lines"] = [
+            "Using the proxy: http://ph-1-country-any:pw@gate.proxyhat.com:8080\n",
+            "[+] johndoe: https://twitter.com/johndoe\n",
+        ]
+        fake_sherlock["returncode"] = 7
+        rc = main([*CREDS, "johndoe"])
+        out = capsys.readouterr().out
+        assert rc == 7  # child exit code preserved
+        # Neither the password nor the credentialed userinfo survives.
+        assert "pw" not in out
+        assert "ph-1-country-any:pw@" not in out
+        assert "Using the proxy: http://***:***@gate.proxyhat.com:8080" in out
+        # A normal sherlock result line passes through byte-for-byte.
+        assert "[+] johndoe: https://twitter.com/johndoe" in out
 
     def test_main_missing_sherlock_returns_2(self, monkeypatch):
         monkeypatch.setattr(cli.shutil, "which", lambda name: None)

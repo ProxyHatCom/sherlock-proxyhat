@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sherlock-proxyhat"
-version = "0.1.0"
+version = "0.1.1"
 description = "Run the Sherlock OSINT username hunter through ProxyHat residential proxies — rotating IPs, geo-targeting, fewer blocks."
 readme = "README.md"
 license = "MIT"

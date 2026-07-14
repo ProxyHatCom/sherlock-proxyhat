@@ -10,4 +10,4 @@ __all__ = [
     "proxyhat_proxy_url",
     "resolve_credentials",
 ]
-__version__ = "0.1.0"
+__version__ = "0.1.1"

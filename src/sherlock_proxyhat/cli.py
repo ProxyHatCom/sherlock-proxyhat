@@ -142,14 +142,13 @@ def _has_user_proxy(passthrough: Sequence[str]) -> bool:
     return any(a == "--proxy" or a == "-p" or a.startswith("--proxy=") for a in passthrough)
 
 
-def build_command(argv: Sequence[str]) -> list[str]:
-    """Resolve the ProxyHat proxy and build the full ``sherlock`` command line.
+def _plan(argv: Sequence[str]) -> tuple[list[str], str | None]:
+    """Build the ``sherlock`` command line and report the injected proxy URL.
 
-    Returns ``[sherlock_exe, "--proxy", <url>, *passthrough]``. If the caller
-    already passed Sherlock's own ``--proxy``/``-p``, that wins and no ProxyHat URL
-    is injected (a note goes to stderr). Raises ``ProxyHatConfigError`` if
-    credentials can't be resolved and ``FileNotFoundError`` if ``sherlock`` isn't
-    installed.
+    Returns ``(command, proxy_url)`` where ``proxy_url`` is the credentialed
+    ProxyHat URL we injected (whose secrets ``main`` must redact from Sherlock's
+    output) or ``None`` when the caller supplied their own ``--proxy``/``-p`` and
+    nothing of ours is in the command line.
     """
     ns, passthrough = _build_parser().parse_known_args(list(argv))
 
@@ -165,7 +164,7 @@ def build_command(argv: Sequence[str]) -> list[str]:
             "sherlock-proxyhat: a --proxy/-p flag was supplied explicitly; using it and skipping the ProxyHat proxy.",
             file=sys.stderr,
         )
-        return [sherlock_exe, *passthrough]
+        return [sherlock_exe, *passthrough], None
 
     url = proxyhat_proxy_url(
         api_key=ns.proxyhat_api_key,
@@ -179,24 +178,80 @@ def build_command(argv: Sequence[str]) -> list[str]:
         filter=ns.proxyhat_filter,
         protocol=ns.proxyhat_protocol,
     )
-    return [sherlock_exe, "--proxy", url, *passthrough]
+    return [sherlock_exe, "--proxy", url, *passthrough], url
+
+
+def build_command(argv: Sequence[str]) -> list[str]:
+    """Resolve the ProxyHat proxy and build the full ``sherlock`` command line.
+
+    Returns ``[sherlock_exe, "--proxy", <url>, *passthrough]``. If the caller
+    already passed Sherlock's own ``--proxy``/``-p``, that wins and no ProxyHat URL
+    is injected (a note goes to stderr). Raises ``ProxyHatConfigError`` if
+    credentials can't be resolved and ``FileNotFoundError`` if ``sherlock`` isn't
+    installed.
+    """
+    return _plan(argv)[0]
+
+
+def _redactions(url: str) -> list[tuple[str, str]]:
+    """``(secret, mask)`` pairs to scrub from Sherlock's output for a proxy URL.
+
+    Since we built ``url`` ourselves we know its exact secret substrings. Returns
+    masks for the whole credentialed URL, the ``user:pass@`` userinfo, and the
+    bare password — most specific first so the full URL is caught as one unit.
+    """
+    scheme, sep, rest = url.partition("://")
+    if not sep or "@" not in rest:
+        return []
+    userinfo, _, hostport = rest.rpartition("@")
+    _user, _, password = userinfo.partition(":")
+    pairs = [
+        (url, f"{scheme}://***:***@{hostport}"),
+        (f"{userinfo}@", "***:***@"),
+    ]
+    if password:
+        pairs.append((password, "***"))
+    return pairs
+
+
+def _redact_line(line: str, redactions: Sequence[tuple[str, str]]) -> str:
+    """Mask every known secret occurrence in one output line."""
+    for secret, mask in redactions:
+        if secret:
+            line = line.replace(secret, mask)
+    return line
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for the ``sherlock-proxyhat`` console script.
 
     Builds the command and hands off to the real ``sherlock`` via subprocess,
-    returning its exit code.
+    returning its exit code. Upstream Sherlock echoes the full ``--proxy`` URL
+    ("Using the proxy: http://user:pass@…") on every run, so we pipe its output
+    and stream it line by line, masking our proxy credentials before they reach
+    the user's terminal or logs. Nothing is buffered — long scans keep streaming.
     """
     argv = list(sys.argv[1:] if argv is None else argv)
     try:
-        command = build_command(argv)
+        command, proxy_url = _plan(argv)
     except (ProxyHatConfigError, FileNotFoundError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
 
-    completed = subprocess.run(command)
-    return completed.returncode
+    redactions = _redactions(proxy_url) if proxy_url else []
+    # Merge stderr into stdout so relative line ordering is preserved and both
+    # streams get scrubbed; read line-buffered and flush as we go.
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    for line in proc.stdout:  # type: ignore[union-attr]
+        sys.stdout.write(_redact_line(line, redactions))
+        sys.stdout.flush()
+    return proc.wait()
 
 
 if __name__ == "__main__":  # pragma: no cover

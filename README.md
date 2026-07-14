@@ -82,6 +82,10 @@ sherlock-proxyhat --proxyhat-sticky-ttl 2h johndoe        # one pinned IP, 2h li
 
 If you pass Sherlock's own `--proxy`/`-p` (or `--tor`) yourself, the launcher steps aside: it forwards your arguments unchanged and does not inject a ProxyHat URL.
 
+### Credentials never hit your logs
+
+Sherlock prints the full `--proxy` URL on startup (`Using the proxy: http://user:pass@gate.proxyhat.com:8080`), which would otherwise leak your ProxyHat `proxy_username`/`proxy_password` into the terminal and any captured logs. Because the launcher builds that URL, it knows the exact secret strings and redacts them: it pipes Sherlock's output and streams it line by line (nothing is buffered — long scans stream normally), masking the credentials to `http://***:***@gate.proxyhat.com:8080` before anything reaches your stdout. Sherlock's result lines pass through unchanged.
+
 ## Using the URL builder directly
 
 Need the gateway URL in your own script or a different tool? Import the helper:
